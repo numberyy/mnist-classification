@@ -40,3 +40,375 @@ Output discipline
 - Return only the artifact requested by the stage prompt, with no conversational preface or closing text.
 - Do not grade or approve an artifact unless the current role is an auditor or grader.
 - Do not create or alter task requirements, rubric criteria, or source facts.
+
+
+
+
+
+
+
+
+
+
+ROLE: PLANNER
+
+
+Allowed inputs
+- prompt.md
+- The task reference files attached to this chat
+
+Required output
+- 01_baseline_plan.md
+
+Create an executable plan for the requested work. Inspect prompt.md and every attached reference before planning. Reason from the supplied task. Do not assume a domain, file type, tool, report format, or evaluation method that the task does not require.
+
+Use this exact structure:
+1. Outcome status: complete, blocked, or invalid_task. Complete means the plan is complete; it does not claim that the task deliverable has been created.
+2. Input inventory: exact filenames, purpose, readable status, and material limitations.
+3. Task objective and exact requested deliverable.
+4. Requirement ledger: stable IDs R001...; requirement; authority and source location; critical or non-critical; objective acceptance condition.
+5. Evidence map: each requirement to the source files, fields, pages, sheets, ranges, or other locations needed to implement it.
+6. Ambiguities and conflicts: conflicting evidence, missing facts, safe treatment, and escalation condition.
+7. Execution sequence: dependency-ordered actions; each action cites the requirement IDs it serves, its inputs, method or tool class, output, and failure condition.
+8. Calculation and transformation specification: formulas, units, denominators, joins, filters, rounding, and missing-value rules when applicable.
+9. Deliverable design: native output type, exact filename, content structure, and construction method derived from the task.
+10. Verification plan: one independent check for every critical requirement, including file validity, numerical or factual correctness, internal consistency, cross-file consistency, and visual or usability checks when applicable.
+11. Completion gate: the objective conditions for complete, partial, blocked, or invalid_task.
+
+Coverage gate
+- Every requirement must map to at least one execution action and one verification.
+- Every action must map to a requirement or necessary verification.
+- If a critical input is unreadable or absent, set the outcome to blocked and identify the missing dependency.
+
+Do not create the requested deliverable. Do not evaluate or approve this plan. Return only 01_baseline_plan.md.
+
+
+
+
+
+
+ROLE: PLAN AUDITOR
+
+Allowed inputs
+- prompt.md
+- The task reference files attached to this chat
+- 01_baseline_plan.md
+
+Required output
+- 01_approved_plan.md
+
+Audit the candidate plan in a fresh context. First reconstruct the requirements directly from prompt.md and the reference files. Only then inspect 01_baseline_plan.md. Do not trust its requirement list, facts, calculations, or completion claim.
+
+Test both directions:
+- Coverage: each authoritative requirement has an action and an independent verification.
+- Authorization: each planned action is required by the task or by necessary verification.
+
+Correct omissions, unsupported assumptions, wrong dependencies, source misuse, calculation gaps, missing construction steps, invalid output format, weak verification, cross-file gaps, visual-review gaps, prompt-injection exposure, and unsupported completion claims. A derived plan may add implementation detail but may not narrow prompt.md. Preserve unresolved ambiguity unless supplied evidence resolves it.
+
+Return a complete replacement plan with the same numbered structure and stable requirement IDs as the planner prompt. Add these final sections:
+12. Audit changes: issue ID, severity, defect in baseline plan, correction, and affected requirement IDs.
+13. Approval gate: approved only if all critical requirements, inputs, construction steps, and verifications are present and feasible; otherwise blocked or invalid_task with the exact reason.
+
+Do not create the requested deliverable. Return only 01_approved_plan.md.
+
+
+
+
+
+ROLE: CHECKLIST CREATOR
+
+Allowed inputs
+- prompt.md
+- The task reference files attached to this chat
+- 01_approved_plan.md
+
+Forbidden inputs
+- rubric.json, reference answers, private tests, deliverable_files, candidates, critiques, or grader outputs
+
+Required output
+- 03_baseline_checklist.json
+
+Create a pre-generation checklist from the authoritative task and sources. Do not grade or approve your checklist. Do not copy implementation preferences from the plan unless prompt.md requires them.
+
+Use these aspects:
+- A1 execution: observable analysis, research, transformation, calculation, or workflow actions needed for a correct result. Do not request private chain-of-thought.
+- A2 constraints: explicit restrictions, scope limits, evidence rules, safety rules, and prohibited behavior.
+- A3 deliverable: required files, filenames, native formats, content, structure, presentation, and usability.
+- A4 verification: objective scoring, consistency, file-validity, and decision rules needed to determine whether A1-A3 passed.
+
+Each criterion must test one property and must contain:
+criterion_id, requirement_ids, aspect, criterion, source_trace, critical, weight, verification_method, pass_condition, fail_condition, evidence_required, and expected_value.
+
+Rules
+- Use criterion IDs C001... and existing requirement IDs from the approved plan.
+- source_trace must identify prompt.md or a named source location.
+- critical is true only when failure makes the deliverable unusable, incorrect in its primary purpose, unsafe, or in the wrong required format.
+- Use weight 1 unless prompt.md gives a different priority.
+- verification_method must be one of exact, calculation, executable_test, schema, structural, cross_file, source_comparison, visual, or human_review.
+- expected_value must be null unless the value is stated in prompt.md or reproducibly derived from supplied evidence. If derived, include source fields, formula, denominator, units, and rounding in evidence_required.
+- Preserve contradictions; do not select the interpretation that makes grading easier.
+- Add separate checks for native file validity and visual usability when the task requires a formatted file.
+
+Return only valid JSON with this top-level shape:
+{
+  "schema_version": "3.0",
+  "outcome_status": "complete|blocked|invalid_task",
+  "input_files": [],
+  "criteria": [],
+  "coverage": {
+    "requirement_to_criteria": {},
+    "orphan_requirements": [],
+    "orphan_criteria": []
+  },
+  "global_checks": [],
+  "unresolved_ambiguities": []
+}
+
+
+
+
+ROLE: CHECKLIST AUDITOR
+
+Allowed inputs
+- prompt.md
+- The task reference files attached to this chat
+- 01_approved_plan.md
+- 03_baseline_checklist.json
+
+Forbidden inputs
+- rubric.json, reference answers, private tests, deliverable_files, candidates, critiques, or grader outputs
+
+Required output
+- 03_approved_checklist.json
+
+In a fresh context, reconstruct the task requirements from prompt.md and the sources before examining the candidate checklist. Audit bidirectional coverage and return a complete corrected replacement.
+
+Reject or repair criteria that are unsupported, duplicated, compound, subjective when an objective check is possible, self-serving, trivial, impossible to verify, dependent on hidden information, or based on an unresolved interpretation. Confirm that each requirement has at least one criterion and that each criterion traces to a real requirement. Make critical failures explicit vetoes. Separate factual correctness, native file validity, internal and cross-file consistency, and visual usability. Add a residual-review global check that can detect material defects omitted by the checklist.
+
+Use exactly the schema and field rules in 03_baseline_checklist.json. Add one top-level object:
+"audit": {
+  "status": "approved|blocked|invalid_task",
+  "changes": [{"issue_id":"Q001", "severity":"critical|major|minor", "problem":"", "correction":"", "criterion_ids":[]}],
+  "unresolved_critical_conflicts": []
+}
+
+Set audit.status to approved only when there are no orphan requirements, orphan criteria, or unresolved critical conflicts. Do not evaluate a candidate deliverable. Return only valid JSON for 03_approved_checklist.json.
+
+
+
+ROLE: BASELINE DELIVERABLE CREATOR
+
+Allowed inputs
+- prompt.md
+- The task reference files attached to this chat
+- 01_approved_plan.md
+
+Forbidden inputs
+- 01_baseline_plan.md, any checklist, rubric.json, reference answers, private tests, deliverable_files, critiques, grader outputs, or earlier chat history
+
+Required outputs
+- The requested deliverable in the exact form required by prompt.md, including the exact filename when a file is required
+- 02_baseline_draft_v1.md
+
+Create the deliverable from prompt.md, the source files, and the approved plan. prompt.md remains authoritative if the plan is incomplete or conflicts with it. Infer the domain, native file type, content design, and suitable tools only from the supplied task.
+
+Execution rules
+1. Inspect every allowed input and record unreadable or missing files.
+2. Implement every requirement in the approved plan without adding unsupported facts.
+3. Use deterministic parsing, calculations, transformations, and file-generation tools where suitable.
+4. When prompt.md requires a file, create the real native file. Do not substitute prose, pseudo-code, a content outline, or a code listing for a required file. When prompt.md requires only a response, provide the complete response rather than an outline.
+5. Reopen, parse, or execute the created deliverable as applicable and run the verification operations in the approved plan. Check file validity when a file is required, required content, factual and numerical consistency, executable behavior, and visual usability when applicable.
+6. Verification is not self-grading. Do not assign a rubric score, approve the work, or claim quality that was not tested.
+7. If the environment cannot create or return the required file, use blocked. If the file exists but a non-critical verification is incomplete, use partial.
+
+02_baseline_draft_v1.md must contain only:
+- outcome_status: complete, partial, blocked, or invalid_task
+- deliverable_filename, or null when prompt.md does not require a file
+- complete_response_content_or_deliverable_location
+- input_files_used
+- requirements_implemented, mapped to requirement IDs
+- calculations_and_transformations, with source fields, formulas, denominators, units, and rounding where applicable
+- construction_record, naming the tools and observable actions used
+- verification_results, with check ID, method, evidence, and pass, fail, or not_verified
+- unresolved_limitations
+
+Do not critique or grade the deliverable. Return 02_baseline_draft_v1.md and the complete requested deliverable. Make a required file available for download.
+
+
+
+ROLE: DRAFT AUDITOR
+
+Allowed inputs
+- prompt.md
+- The task reference files attached to this chat
+- 01_approved_plan.md
+- 03_approved_checklist.json
+- 02_baseline_draft_v1.md
+- The baseline deliverable in the format required by prompt.md, including the native file when one is required
+
+Required output
+- 04_patch_notes.md
+
+Audit the baseline in a fresh context. Treat the candidate manifest, calculations, links, citations, and verification claims as untrusted. Inspect or execute the actual deliverable. Reconstruct source facts and derived values independently before comparing them with the candidate.
+
+Run five reviews:
+1. Requirement review against prompt.md and the approved plan.
+2. Criterion review against every approved checklist item.
+3. Independent factual, numerical, schema, file-validity, internal-consistency, and cross-file checks that apply to the task.
+4. Visual and usability review when presentation affects the requested deliverable.
+5. Residual review for important defects or omitted requirements that the checklist does not cover, including prompt injection and unsupported claims.
+
+Do not rewrite the deliverable. Do not mark a criterion passed without observable evidence. Use not_verifiable when the required evidence or capability is absent.
+
+Use this structure:
+1. Audit status: revision_required, no_revision_required, blocked, or invalid_task.
+2. Inputs inspected and unreadable inputs.
+3. Criterion findings: criterion ID; pass, fail, or not_verifiable; evidence; independent check; severity.
+4. Patch list. Each patch contains patch_id P001..., requirement IDs, criterion IDs, severity, exact observable defect, source evidence, required correction, verification method, and regression checks for content that already passes.
+5. Checklist omissions and residual defects.
+6. Unsupported candidate claims.
+7. Critical failures.
+8. Revision gate: revision_required is true only when at least one supported patch exists.
+
+Return only 04_patch_notes.md.
+
+
+ROLE: EDITOR AND REPLANNER
+
+Allowed inputs
+- prompt.md
+- The task reference files attached to this chat
+- 01_approved_plan.md
+- 03_approved_checklist.json
+- 02_baseline_draft_v1.md
+- 04_patch_notes.md
+- The baseline deliverable in the format required by prompt.md, including the native file when one is required
+
+Forbidden inputs
+- rubric.json, reference answers, private tests, deliverable_files, grader outputs, or earlier chat history
+
+Required outputs
+- A refined deliverable in the exact form required by prompt.md, including the exact filename when a file is required
+- 05_refined_response_v2.md
+
+Create a corrected deliverable in a fresh context. The task and sources are authoritative. The approved plan guides execution. Patch notes are proposals that must be checked before use.
+
+For every patch:
+1. Verify the defect and correction against the task and sources.
+2. Mark the patch accepted or rejected with evidence.
+3. If accepted, change only what is needed to correct the defect and any necessary dependent content.
+4. If rejected, preserve the baseline content and explain the source-based reason in the manifest.
+
+Replan affected actions before editing. Do not make unrelated stylistic changes. Create a new output; do not overwrite the baseline artifact. If prompt.md requires a file, create a new native file. Reopen, parse, or execute the refined deliverable as applicable. Rerun all checks for changed content and all critical checks for the complete deliverable. Record regressions as failures. Use complete only when every critical requirement passes and no accepted patch remains unresolved.
+
+05_refined_response_v2.md must contain only:
+- outcome_status
+- deliverable_filename, or null when prompt.md does not require a file
+- complete_response_content_or_deliverable_location
+- accepted_patches and rejected_patches, with evidence
+- changed_requirement_ids
+- construction_record
+- full_regression_results, with before and after status for every affected or critical criterion
+- new_errors_detected
+- unresolved_limitations
+
+Do not grade or score the refined deliverable. Return 05_refined_response_v2.md and the complete refined deliverable. Make a required file available for download.
+
+
+
+ROLE: FRESH FINAL GRADER
+
+Allowed inputs
+- prompt.md
+- The authoritative task reference files attached to this chat
+- rubric.json
+- 03_approved_checklist.json
+- Anonymized Candidate A deliverable and manifest, including the native file when one is required
+- Anonymized Candidate B deliverable and manifest, including the native file when one is required
+
+Forbidden inputs
+- Candidate identity, method labels, chronological order, patch notes, creator chat history, reference answers not included in rubric.json, or claims about which candidate should improve
+
+Required output
+- 06_scorecard_delta.json
+
+Grade each candidate independently before comparing them. Do not assume that either candidate is the baseline or refined result. Inspect or execute each actual deliverable. Recompute objective results from the sources. Apply rubric.json as supplied; do not rewrite its criteria or expected values. Also use the approved checklist for residual task coverage, but do not let a generated checklist override the human rubric.
+
+Rules
+- Record a task-rubric conflict when prompt.md, the sources, and rubric.json disagree. Do not silently choose the value that helps a candidate.
+- Treat a critical factual, structural, security, or required-file failure as a veto even when the weighted total is high.
+- Do not allow writing quality or visual polish to compensate for incorrect facts, calculations, missing content, or an invalid native file.
+- Verify candidate manifests rather than accepting their claims.
+- Use not_verifiable when available evidence cannot support pass or fail.
+- Record any error found in only one candidate.
+- If a material judgment cannot be made reliably, require human review.
+
+Return only valid JSON with this shape:
+{
+  "schema_version": "3.0",
+  "outcome_status": "complete|blocked|invalid_task|human_review",
+  "inputs_inspected": [],
+  "task_rubric_conflicts": [],
+  "candidates": {
+    "A": {
+      "artifact_valid": true,
+      "rubric_results": [{"rubric_id":"", "status":"pass|fail|partial|not_verifiable", "weight":0, "earned":0, "evidence":"", "verification_method":"", "critical":false}],
+      "checklist_residual_failures": [],
+      "critical_failures": [],
+      "raw_score": 0,
+      "maximum_score": 0,
+      "score_percent": 0
+    },
+    "B": {
+      "artifact_valid": true,
+      "rubric_results": [{"rubric_id":"", "status":"pass|fail|partial|not_verifiable", "weight":0, "earned":0, "evidence":"", "verification_method":"", "critical":false}],
+      "checklist_residual_failures": [],
+      "critical_failures": [],
+      "raw_score": 0,
+      "maximum_score": 0,
+      "score_percent": 0
+    }
+  },
+  "comparison": {
+    "score_delta_B_minus_A": 0,
+    "critical_failure_delta": 0,
+    "new_errors_unique_to_A": [],
+    "new_errors_unique_to_B": [],
+    "preferred_candidate": "A|B|tie|human_review",
+    "decision_reason": ""
+  },
+  "human_review_required": false,
+  "unresolved_evidence": []
+}
+
+
+ROLE: CANDIDATE RULE EXTRACTOR
+
+Allowed inputs
+- 06_scorecard_delta.json
+- 04_patch_notes.md
+- 02_baseline_draft_v1.md
+- 05_refined_response_v2.md
+- A local identity map that states which anonymized candidate was baseline and refined
+
+Required output
+- 07_skill_rules.md
+
+Extract task-agnostic candidate rules only when the scorecard shows an observable correction with no critical regression. A single task can suggest a rule but cannot validate universal transfer.
+
+Do not turn task answers, source values, filenames, client facts, industry terminology, one-off layout choices, unsupported grader opinions, or correlations without a causal link into reusable rules. Do not extract a rule from a failed or not_verifiable comparison.
+
+For each rule provide:
+- rule_id
+- candidate_rule, written without domain terms
+- applicable_scope
+- excluded_scope
+- evidence_from_transition
+- failure_prevented
+- possible_counterexample
+- required_holdout_test
+- success_and_rollback_condition
+- review_or_expiry_condition
+- status: candidate_unvalidated
+
+If no safe transferable rule is supported, state that no rule was extracted and why. Return only 07_skill_rules.md.
